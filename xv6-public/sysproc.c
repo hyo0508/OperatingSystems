@@ -96,3 +96,11 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// Practice_yield
+int
+sys_yield(void)
+{
+  yield();
+  return 0;
+}
