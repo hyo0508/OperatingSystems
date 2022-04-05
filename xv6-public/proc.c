@@ -7,6 +7,8 @@
 #include "proc.h"
 #include "spinlock.h"
 
+#define MQ 
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -128,7 +130,7 @@ userinit(void)
   initproc = p;
   if((p->pgdir = setupkvm()) == 0)
     panic("userinit: out of memory?");
-  inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
+  inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size); // init을 실행시킴 (??)
   p->sz = PGSIZE;
   memset(p->tf, 0, sizeof(*p->tf));
   p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
@@ -211,6 +213,8 @@ fork(void)
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
   pid = np->pid;
+
+  // cprintf("%s(%d) forked %s(%d).\n", curproc->name, curproc->pid, np->name, np->pid);
 
   acquire(&ptable.lock);
 
@@ -323,32 +327,46 @@ void
 scheduler(void)
 {
   struct proc *p;
+  struct proc *minp = 0;
+  int minpid;
   struct cpu *c = mycpu();
   c->proc = 0;
   
   for(;;){
-    // Enable interrupts on this processor.
     sti();
 
-    // Loop over process table looking for process to run.
     acquire(&ptable.lock);
+    minpid = 0x7FFFFFFF;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
+      if(minpid && (p->pid % 2 != 0)) {
+        if (p->pid < minpid) { 
+          minp = p;
+          minpid = p->pid;
+        }
+        continue;
+      }
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-
-      // cprintf("ticks = %d, pid = %d, name = %s\n", ticks, myproc()->pid, myproc()->name);
+      // cprintf("RR: ticks=%d pid=%d ppid=%d name=%s\n", ticks, myproc()->pid, myproc()->parent->pid, myproc()->name);
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
+      c->proc = 0;
+      minpid = 0;
+    }
+    // if (minpid + 1 > 1) 
+    if (minpid != 0 && minpid != 0x7FFFFFFF) {
+      c->proc = minp;
+      switchuvm(minp);
+      minp->state = RUNNING;
+      // cprintf("FCFS: ticks=%d pid=%d ppid=%d name=%s\n", ticks, myproc()->pid, myproc()->parent->pid, myproc()->name);
+      swtch(&(c->scheduler), minp->context);
+      switchkvm();
+      
       c->proc = 0;
     }
     release(&ptable.lock);
@@ -524,7 +542,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    cprintf("%d %s %s", p->pid, state, p->name);
+    cprintf("%d(%d) %s %s", p->pid, p->parent ? p->parent->pid : 0, state, p->name);
     if(p->state == SLEEPING){
       getcallerpcs((uint*)p->context->ebp+2, pc);
       for(i=0; i<10 && pc[i] != 0; i++)
@@ -532,4 +550,5 @@ procdump(void)
     }
     cprintf("\n");
   }
+  // cprintf("ticks = %d, pid = %d, ppid = %d, name = %s\n", ticks, myproc()->pid, myproc()->parent->pid, myproc()->name);
 }
