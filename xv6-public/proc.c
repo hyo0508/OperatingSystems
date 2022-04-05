@@ -7,7 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 
-#define MQ 
+#define MQ
 
 struct {
   struct spinlock lock;
@@ -323,6 +323,8 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+
+#if 1 // Multilevel Queue
 void
 scheduler(void)
 {
@@ -340,7 +342,7 @@ scheduler(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
-      if(minpid && (p->pid % 2 != 0)) {
+      if(p->pid % 2 != 0) {
         if (p->pid < minpid) { 
           minp = p;
           minpid = p->pid;
@@ -351,19 +353,18 @@ scheduler(void)
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-      // cprintf("RR: ticks=%d pid=%d ppid=%d name=%s\n", ticks, myproc()->pid, myproc()->parent->pid, myproc()->name);
+
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
       c->proc = 0;
       minpid = 0;
     }
-    // if (minpid + 1 > 1) 
     if (minpid != 0 && minpid != 0x7FFFFFFF) {
       c->proc = minp;
       switchuvm(minp);
       minp->state = RUNNING;
-      // cprintf("FCFS: ticks=%d pid=%d ppid=%d name=%s\n", ticks, myproc()->pid, myproc()->parent->pid, myproc()->name);
+
       swtch(&(c->scheduler), minp->context);
       switchkvm();
       
@@ -373,6 +374,35 @@ scheduler(void)
 
   }
 }
+#else // MLFQ
+void
+scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+  
+  for(;;){
+    sti();
+
+    acquire(&ptable.lock);
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;   
+      cprintf("ticks=%d pid=%d ppid=%d name=%s\n", ticks, myproc()->pid, myproc()->parent->pid, myproc()->name);
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+
+      c->proc = 0;
+    }
+    release(&ptable.lock);
+  }
+}
+#endif
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
