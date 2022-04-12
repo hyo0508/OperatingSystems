@@ -71,6 +71,9 @@ sys_sleep(void)
 
   if(argint(0, &n) < 0)
     return -1;
+  #ifdef MLFQ_SCHED
+  boosting();
+  #endif
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
@@ -97,10 +100,31 @@ sys_uptime(void)
   return xticks;
 }
 
-// Practice_yield
 int
 sys_yield(void)
 {
+  #ifdef MLFQ_SCHED
+  boosting();
+  #endif
   yield();
   return 0;
+}
+
+int
+sys_setpriority(void)
+{
+  int pid;
+  int priority;
+
+  if (argint(0, &pid) < 0)
+    return -1;
+  if (argint(1, &priority) < 0)
+    return -1;
+  return setpriority(pid, priority);
+}
+
+int
+sys_getlev(void)
+{
+  return myproc()->lev;
 }

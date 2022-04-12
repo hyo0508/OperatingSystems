@@ -7,7 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 
-#define MQ
+#define QUANTUM(p) (4*((p)->lev)+2)
 
 struct {
   struct spinlock lock;
@@ -90,6 +90,12 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+
+  #ifdef MLFQ_SCHED
+  p->priority = 0;
+  p->lev = 0;
+  p->ticks = 0;
+  #endif
 
   release(&ptable.lock);
 
@@ -298,6 +304,13 @@ wait(void)
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
+
+        #ifdef MLFQ_SCHED
+        p->priority = 0;
+        p->lev = 0;
+        p->ticks = 0;
+        #endif
+
         p->state = UNUSED;
         release(&ptable.lock);
         return pid;
@@ -324,13 +337,36 @@ wait(void)
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
 
-#if 1 // Multilevel Queue
+#ifdef MLFQ_SCHED
+void priority_boosting() {
+  struct proc *p;
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->state != RUNNABLE)
+      continue;
+    p->lev = 0;
+    p->ticks = 0;
+  }
+  release(&ptable.lock);
+}
+#endif
+
+#ifdef MLFQ_SCHED
+void boosting() {
+  acquire(&ptable.lock);
+  myproc()->lev = 0;
+  myproc()->ticks = 0;
+  release(&ptable.lock);
+}
+#endif
+
 void
 scheduler(void)
 {
+#if defined(MULTILEVEL_SCHED)
+  int minpid;
   struct proc *p;
   struct proc *minp = 0;
-  int minpid;
   struct cpu *c = mycpu();
   c->proc = 0;
   
@@ -339,6 +375,7 @@ scheduler(void)
 
     acquire(&ptable.lock);
     minpid = 0x7FFFFFFF;
+    minp = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
@@ -349,36 +386,31 @@ scheduler(void)
         }
         continue;
       }
-
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
-
       swtch(&(c->scheduler), p->context);
       switchkvm();
-
       c->proc = 0;
       minpid = 0;
     }
-    if (minpid != 0 && minpid != 0x7FFFFFFF) {
-      c->proc = minp;
-      switchuvm(minp);
-      minp->state = RUNNING;
 
-      swtch(&(c->scheduler), minp->context);
+    if (minpid != 0 && (p = minp)) {
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+      swtch(&(c->scheduler), p->context);
       switchkvm();
-      
       c->proc = 0;
     }
     release(&ptable.lock);
-
+  
   }
-}
-#else // MLFQ
-void
-scheduler(void)
-{
+#elif defined(MLFQ_SCHED)
+  int minlev;
+  int maxprior;
   struct proc *p;
+  struct proc *runp = 0;
   struct cpu *c = mycpu();
   c->proc = 0;
   
@@ -386,23 +418,70 @@ scheduler(void)
     sti();
 
     acquire(&ptable.lock);
+    minlev = 10;
+    maxprior = -1;
+    runp = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+      if (p->lev < minlev || (p->lev == minlev && p->priority > maxprior)) {
+        minlev = p->lev;
+        maxprior = p->priority;
+        runp = p;
+      }
+    }
+
+    if ((p = runp)) {
+      if (p->ticks == QUANTUM(p) && p->lev < MLFQ_K-1) {
+        p->lev++;
+        p->ticks = 0;
+      }
+      if (p->lev < MLFQ_K-1 || p->ticks <= QUANTUM(p)) {
+        c->proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
+        swtch(&(c->scheduler), p->context);
+        switchkvm();
+        c->proc = 0;
+      }
+    }
+    release(&ptable.lock);
+
+  }
+#else
+  struct proc *p;
+  struct cpu *c = mycpu();
+  c->proc = 0;
+  
+  for(;;){
+    // Enable interrupts on this processor.
+    sti();
+
+    // Loop over process table looking for process to run.
+    acquire(&ptable.lock);
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
 
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
       c->proc = p;
       switchuvm(p);
-      p->state = RUNNING;   
-      cprintf("ticks=%d pid=%d ppid=%d name=%s\n", ticks, myproc()->pid, myproc()->parent->pid, myproc()->name);
+      p->state = RUNNING;
+
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
       c->proc = 0;
     }
     release(&ptable.lock);
+
   }
-}
 #endif
+}
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -537,6 +616,26 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
+      release(&ptable.lock);
+      return 0;
+    }
+  }
+  release(&ptable.lock);
+  return -1;
+}
+
+int
+setpriority(int pid, int priority)
+{
+  struct proc *p;
+  
+  if (priority < 0 || priority > 10)
+    return -2;
+
+  acquire(&ptable.lock);
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->pid == pid && p->parent == myproc()) {
+      p->priority = priority;
       release(&ptable.lock);
       return 0;
     }

@@ -2,8 +2,8 @@
 #include "stat.h"
 #include "user.h"
 
-#define NUM_LOOP 50000
-#define NUM_YIELD 10000
+#define NUM_LOOP 100000
+#define NUM_YIELD 20000
 #define NUM_SLEEP 500
 
 #define NUM_THREAD 4
@@ -70,17 +70,21 @@ void exit_children()
   while (wait() != -1);
 }
 
-#if 0
-int main() {
-  printf(1, "MLFQ_K: %d\n", MLFQ_K);
-  exit();
-}
-#else
 int main(int argc, char *argv[])
 {
   int i, pid;
   int count[MAX_LEVEL] = {0};
   int child;
+
+  #ifndef MLFQ_SCHED
+  printf(1, "1\n");
+  exit();
+  #endif
+
+  #ifndef MLFQ_K
+  printf(1, "2\n");
+  exit();
+  #endif
 
   parent = getpid();
 
@@ -266,4 +270,4 @@ int main(int argc, char *argv[])
 
   exit();
 }
-#endif
+

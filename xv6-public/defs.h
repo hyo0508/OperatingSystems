@@ -10,6 +10,13 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+// #if 0
+// #define MULTILEVEL_SCHED
+// #else
+// #define MLFQ_SCHED
+// #define MLFQ_K 5
+// #endif
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -112,8 +119,13 @@ struct cpu*     mycpu(void);
 struct proc*    myproc();
 void            pinit(void);
 void            procdump(void);
+#ifdef MLFQ_SCHED
+void            priority_boosting(void);
+void            boosting(void);
+#endif
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
+int             setpriority(int, int);
 void            setproc(struct proc*);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);
