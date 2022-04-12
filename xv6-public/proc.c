@@ -95,6 +95,7 @@ found:
   p->priority = 0;
   p->lev = 0;
   p->ticks = 0;
+  p->recent = 0;
   #endif
 
   release(&ptable.lock);
@@ -305,12 +306,6 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
 
-        #ifdef MLFQ_SCHED
-        p->priority = 0;
-        p->lev = 0;
-        p->ticks = 0;
-        #endif
-
         p->state = UNUSED;
         release(&ptable.lock);
         return pid;
@@ -342,10 +337,9 @@ void priority_boosting() {
   struct proc *p;
   acquire(&ptable.lock);
   for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (p->state != RUNNABLE)
-      continue;
     p->lev = 0;
     p->ticks = 0;
+    p->recent = 0;
   }
   release(&ptable.lock);
 }
@@ -356,6 +350,7 @@ void boosting() {
   acquire(&ptable.lock);
   myproc()->lev = 0;
   myproc()->ticks = 0;
+  myproc()->recent = 0;
   release(&ptable.lock);
 }
 #endif
@@ -397,7 +392,7 @@ scheduler(void)
       minpid = 0;
     }
 
-    // RR큐가 비어있고 RR큐의 RUNNABLE인 프로세스가 있다면 pid가 가장 작은 프로세스를 실행한다.
+    // RR큐가 비어있고 FCFS큐의 RUNNABLE인 프로세스가 있다면 pid가 가장 작은 프로세스를 실행한다.
     if (minpid != 0 && (p = minp)) {
       c->proc = p;
       switchuvm(p);
@@ -411,6 +406,7 @@ scheduler(void)
   }
 #elif defined(MLFQ_SCHED)
   int minlev;
+  int recent;
   int maxprior;
   struct proc *p;
   struct proc *runp = 0;
@@ -422,38 +418,48 @@ scheduler(void)
 
     acquire(&ptable.lock);
     minlev = MLFQ_K-1;
+    recent = 0;
     maxprior = -1;
     runp = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
-      // level이 가장 낮은 프로세스 중 priority가 가장 높은 프로세스를 저장한다.
-      if (p->lev < minlev || (p->lev == minlev && p->priority > maxprior)) {
-        minlev = p->lev;
-        maxprior = p->priority;
-        runp = p;
+      /* level이 가장 높은 프로세스
+       * (time quantum이 남은) 최근 실행 프로세스
+       * priority가 가장 높은 프로세스
+       * 순의 우선순위로 스케줄링할 프로세스를 정한다.
+       */
+      if ((p->lev < minlev) ||
+          (p->lev == minlev && p->recent == 1) ||
+          (p->lev == minlev && recent == 0 && p->priority > maxprior)) {
+        if (p->ticks < QUANTUM(p)) {
+          minlev = p->lev;
+          recent = p->recent;
+          maxprior = p->priority;
+          runp = p;
+        }
+        /* Li큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
+         * Li+1큐로 내려가고, 실행시간을 초기화한다.
+         * Lk-1큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
+         * 가상의 Lk큐로 내려가고, priority boosting 전까지 스케줄링되지 않는다.
+         */
+        else {
+          p->lev++;
+          p->ticks = 0;
+          p->recent = 0;
+        }
       }
     }
 
     if ((p = runp)) {
-      /* Li큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
-       * Li+1큐로 내려가고, 실행시간을 초기화한다.
-       */
-      /* Lk-1큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
-       * 가상의 Lk큐로 내려가고, priority boosting 전까지 스케줄링되지 않는다.
-       */
-      if (p->ticks == QUANTUM(p)) {
-        p->lev++;
-        p->ticks = 0;
-      }
-      if (p->lev < MLFQ_K-1 || p->ticks <= QUANTUM(p)) {
-        c->proc = p;
-        switchuvm(p);
-        p->state = RUNNING;
-        swtch(&(c->scheduler), p->context);
-        switchkvm();
-        c->proc = 0;
-      }
+      p->recent = 1;
+
+      c->proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+      swtch(&(c->scheduler), p->context);
+      switchkvm();
+      c->proc = 0;
     }
     release(&ptable.lock);
 
@@ -689,5 +695,4 @@ procdump(void)
     }
     cprintf("\n");
   }
-  // cprintf("ticks = %d, pid = %d, ppid = %d, name = %s\n", ticks, myproc()->pid, myproc()->parent->pid, myproc()->name);
 }
