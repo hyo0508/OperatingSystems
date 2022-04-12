@@ -10,13 +10,6 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
-// #if 0
-// #define MULTILEVEL_SCHED
-// #else
-// #define MLFQ_SCHED
-// #define MLFQ_K 5
-// #endif
-
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);

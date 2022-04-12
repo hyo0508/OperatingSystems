@@ -379,6 +379,7 @@ scheduler(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
+      // FCFS큐의 RUNNABLE인 프로세스는 최솟값을 저장만 한다.
       if(p->pid % 2 != 0) {
         if (p->pid < minpid) { 
           minp = p;
@@ -386,6 +387,7 @@ scheduler(void)
         }
         continue;
       }
+      // RR큐의 RUNNABLE인 프로세스는 실행 이후 minpid를 0으로 초기화한다.
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
@@ -395,6 +397,7 @@ scheduler(void)
       minpid = 0;
     }
 
+    // RR큐가 비어있고 RR큐의 RUNNABLE인 프로세스가 있다면 pid가 가장 작은 프로세스를 실행한다.
     if (minpid != 0 && (p = minp)) {
       c->proc = p;
       switchuvm(p);
@@ -418,12 +421,13 @@ scheduler(void)
     sti();
 
     acquire(&ptable.lock);
-    minlev = 10;
+    minlev = MLFQ_K-1;
     maxprior = -1;
     runp = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
+      // level이 가장 낮은 프로세스 중 priority가 가장 높은 프로세스를 저장한다.
       if (p->lev < minlev || (p->lev == minlev && p->priority > maxprior)) {
         minlev = p->lev;
         maxprior = p->priority;
@@ -432,7 +436,13 @@ scheduler(void)
     }
 
     if ((p = runp)) {
-      if (p->ticks == QUANTUM(p) && p->lev < MLFQ_K-1) {
+      /* Li큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
+       * Li+1큐로 내려가고, 실행시간을 초기화한다.
+       */
+      /* Lk-1큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
+       * 가상의 Lk큐로 내려가고, priority boosting 전까지 스케줄링되지 않는다.
+       */
+      if (p->ticks == QUANTUM(p)) {
         p->lev++;
         p->ticks = 0;
       }

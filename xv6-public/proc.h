@@ -52,7 +52,6 @@ struct proc {
   int priority;                // MLFQ priority (0~10)
   int lev;                     // MLFQ level (0~4)
   uint ticks;                  // MLFQ ticks
-  int recent;
 };
 
 // Process memory is laid out contiguously, low addresses first:
