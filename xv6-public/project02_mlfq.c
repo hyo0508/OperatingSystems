@@ -76,16 +76,6 @@ int main(int argc, char *argv[])
   int count[MAX_LEVEL] = {0};
   int child;
 
-  #ifndef MLFQ_SCHED
-  printf(1, "1\n");
-  exit();
-  #endif
-
-  #ifndef MLFQ_K
-  printf(1, "2\n");
-  exit();
-  #endif
-
   parent = getpid();
 
   printf(1, "MLFQ test start\n");
