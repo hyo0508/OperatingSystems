@@ -72,7 +72,7 @@ sys_sleep(void)
   if(argint(0, &n) < 0)
     return -1;
   #ifdef MLFQ_SCHED
-  boosting();
+  setlev(0);
   #endif
   acquire(&tickslock);
   ticks0 = ticks;
@@ -104,7 +104,7 @@ int
 sys_yield(void)
 {
   #ifdef MLFQ_SCHED
-  boosting();
+  setlev(0);
   #endif
   yield();
   return 0;

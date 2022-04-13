@@ -114,7 +114,7 @@ void            pinit(void);
 void            procdump(void);
 #ifdef MLFQ_SCHED
 void            priority_boosting(void);
-void            boosting(void);
+void            setlev(int);
 #endif
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);

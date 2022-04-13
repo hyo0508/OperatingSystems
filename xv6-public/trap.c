@@ -8,6 +8,8 @@
 #include "traps.h"
 #include "spinlock.h"
 
+#define QUANTUM(p) (4*((p)->lev)+2)
+
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
 extern uint vectors[];  // in vectors.S: array of 256 entry pointers
@@ -116,7 +118,15 @@ trap(struct trapframe *tf)
     #if defined(MULTILEVEL_QUEUE)
     if (myproc()->pid % 2 == 0) yield();
     #elif defined(MLFQ_SCHED)
+    /* Li큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
+     * Li+1큐로 내려가고, 실행시간을 초기화한다.
+     * Lk-1큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
+     * 가상의 Lk큐로 내려가고, priority boosting 전까지 스케줄링되지 않는다.
+     */
     myproc()->ticks++;
+    if (myproc()->ticks == QUANTUM(myproc())) {
+      setlev(myproc()->lev + 1);
+    }
     yield();
     #else
     yield();

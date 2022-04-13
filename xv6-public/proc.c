@@ -7,8 +7,6 @@
 #include "proc.h"
 #include "spinlock.h"
 
-#define QUANTUM(p) (4*((p)->lev)+2)
-
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -346,9 +344,9 @@ void priority_boosting() {
 #endif
 
 #ifdef MLFQ_SCHED
-void boosting() {
+void setlev(int lev) {
   acquire(&ptable.lock);
-  myproc()->lev = 0;
+  myproc()->lev = lev;
   myproc()->ticks = 0;
   myproc()->recent = 0;
   release(&ptable.lock);
@@ -424,30 +422,18 @@ scheduler(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
-      /* level이 가장 높은 프로세스
-       * (time quantum이 남은) 최근 실행 프로세스
-       * priority가 가장 높은 프로세스
+      /* 1. level이 가장 높은 프로세스
+       * 2. 최근 실행 프로세스
+       * 3. priority가 가장 높은 프로세스
        * 순의 우선순위로 스케줄링할 프로세스를 정한다.
        */
       if ((p->lev < minlev) ||
-          (p->lev == minlev && p->recent == 1) ||
-          (p->lev == minlev && recent == 0 && p->priority > maxprior)) {
-        if (p->ticks < QUANTUM(p)) {
-          minlev = p->lev;
-          recent = p->recent;
-          maxprior = p->priority;
-          runp = p;
-        }
-        /* Li큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
-         * Li+1큐로 내려가고, 실행시간을 초기화한다.
-         * Lk-1큐에서 실행된 프로세스가 time quantum을 모두 사용한 경우,
-         * 가상의 Lk큐로 내려가고, priority boosting 전까지 스케줄링되지 않는다.
-         */
-        else {
-          p->lev++;
-          p->ticks = 0;
-          p->recent = 0;
-        }
+          (p->lev == minlev && p->recent > recent) ||
+          (p->lev == minlev && p->recent == recent && p->priority > maxprior)) {
+        minlev = p->lev;
+        recent = p->recent;
+        maxprior = p->priority;
+        runp = p;
       }
     }
 
