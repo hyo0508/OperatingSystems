@@ -510,7 +510,9 @@ int
 kill(int pid)
 {
   struct proc *p;
+  int retval;
 
+  retval = -1;
   acquire(&ptable.lock);
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
@@ -518,12 +520,11 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING)
         p->state = RUNNABLE;
-      release(&ptable.lock);
-      return 0;
+      retval = 0;
     }
   }
   release(&ptable.lock);
-  return -1;
+  return retval;
 }
 
 //PAGEBREAK: 36
@@ -605,7 +606,7 @@ thread_create(thread_t *thread, void* (*start_routine)(void *), void *arg)
 
   /* exec */
 
-	if(curproc->start == curproc->end) { ///////////////////////////////////////////////
+  if(curproc->start == curproc->end) {
 		sz = curproc->sz;	
 	} else {
 		sz = curproc->stacklist[curproc->start];
@@ -621,7 +622,7 @@ thread_create(thread_t *thread, void* (*start_routine)(void *), void *arg)
   ustack[2] = 0;
 
   sp -= 12;
-	if(copyout(pgdir, sp, ustack, 3*4) < 0)
+	if(copyout(pgdir, sp, ustack, 12) < 0)
 		goto bad;
 	
 	np->sva = sz - 2*PGSIZE;
@@ -706,4 +707,25 @@ thread_join(thread_t thread, void **retval)
 
 		sleep(curproc, &ptable.lock);
 	}
+}
+
+void
+exit_threads(int pid, int tid) {
+	struct proc *p;
+		
+	acquire(&ptable.lock);
+	for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+		if(pid == 0)
+			continue;
+		if(p->pid == pid && p->tid != tid) {
+			kfree(p->kstack);
+			p->kstack = 0;
+			p->pid = 0;
+			p->parent = 0;
+			p->name[0] = 0;
+			p->killed = 0;
+			p->state = UNUSED;
+		}
+	}
+	release(&ptable.lock);
 }
