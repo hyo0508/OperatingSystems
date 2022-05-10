@@ -591,9 +591,9 @@ thread_create(thread_t *thread, void* (*start_routine)(void *), void *arg)
 
 	for(i = 0; i < NOFILE; i++) {
 		if(curproc->ofile[i])
-			np->ofile[i] = filedup(curproc->ofile[i]);
+			np->ofile[i] = curproc->ofile[i];
 	}
-	np->cwd = idup(curproc->cwd);
+	np->cwd = curproc->cwd;
 
 	safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
@@ -650,19 +650,6 @@ void
 thread_exit(void *retval)
 {
 	struct proc *curproc = myproc();
-	int fd;
-
-	for(fd = 0; fd < NOFILE; fd++) {
-		if(curproc->ofile[fd]) {
-			fileclose(curproc->ofile[fd]);
-			curproc->ofile[fd] = 0;
-		}
-	}
-	
-	begin_op();
-	iput(curproc->cwd);
-	end_op();
-	curproc->cwd = 0;
 
 	acquire(&ptable.lock);
 
