@@ -71,6 +71,7 @@ fmtmode(int type, int mode)
   return buf;
 }
 
+// ls.c
 void
 ls(char *path)
 {

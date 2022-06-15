@@ -20,8 +20,9 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
-#define SYS_uinit  22
-#define SYS_success 23
+#define SYS_uinit       22
+#define SYS_success     23
 #define SYS_setusername 24
-#define SYS_addUser 25
-#define SYS_deleteUser 26
+#define SYS_addUser     25
+#define SYS_deleteUser  26
+#define SYS_chmod       27

@@ -265,8 +265,10 @@ create(char *path, short type, short major, short minor)
   ip->minor = minor;
   ip->nlink = 1;
   iupdate(ip);
+  ip->mode = MODE_RUSR | MODE_WUSR | MODE_ROTH;
 
   if(type == T_DIR){  // Create . and .. entries.
+    ip->mode = MODE_RUSR | MODE_WUSR | MODE_XUSR | MODE_ROTH | MODE_XOTH;
     dp->nlink++;  // for ".."
     iupdate(dp);
     // No ip->nlink++ for ".": avoid cyclic ref count.

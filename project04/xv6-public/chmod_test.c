@@ -45,10 +45,10 @@ int main(int argc, char *argv[])
   if (argv[1][1] & 1)
     mode |= MODE_XOTH;
 
-  // if (chmod(argv[2], mode) == 0)
-  //   printf(1, "chmod successful\n");
-  // else
-  //   printf(1, "chmod failed!\n");
+  if (chmod(argv[2], mode) == 0)
+    printf(1, "chmod successful\n");
+  else
+    printf(1, "chmod failed!\n");
 
   exit();
 }

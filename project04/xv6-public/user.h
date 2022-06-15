@@ -28,6 +28,7 @@ int success(const char*, const char*);
 int setusername(const char*);
 int addUser(char*, char*);
 int deleteUser(char*);
+int chmod(char*, int);
 
 // ulib.c
 int stat(const char*, struct stat*);
