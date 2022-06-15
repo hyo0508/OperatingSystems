@@ -881,6 +881,7 @@ sys_addUser(void) {
   return addUser(username, password);
 }
 
+// fs.c
 int deleteUser(char *username) {
   struct inode *userinfo;
   struct inode *dp;
@@ -938,4 +939,30 @@ sys_deleteUser(void) {
   if (argstr(0, &username) < 0)
     return -1;
   return deleteUser(username);
+}
+
+int chmod(char *path, int mode) {
+  struct inode *ip;
+  struct proc *p = myproc();
+  begin_op();
+  if ((ip = namei(path)) == 0)
+    return -1;
+  if (strncmp(ip->owner, p->username, strlen(p->username)) && strncmp("root", p->username, strlen(p->username)))
+    return -1;
+  ip->mode = mode;
+  iupdate(ip);
+  end_op();
+  return 0;
+}
+
+int
+sys_chmod(void)
+{
+  char *path;
+  int mode;
+  if (argstr(0, &path) < 0)
+    return -1;
+  if (argint(1, &mode) < 0)
+    return -1;
+  return chmod(path, mode);
 }

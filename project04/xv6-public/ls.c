@@ -22,6 +22,55 @@ fmtname(char *path)
   return buf;
 }
 
+char*
+fmtowner(char *owner)
+{
+  static char buf[16];
+  char *s;
+
+  s = owner;
+  memmove(buf, s, strlen(s));
+  memset(buf+strlen(s), ' ', 15-strlen(s));
+  return buf;
+}
+
+char*
+fmtmode(int type, int mode)
+{
+  static char buf[8];
+
+  if (type == 1)
+    buf[0] = 'd';
+  else
+    buf[0] = '-';
+  if (mode & MODE_RUSR)
+    buf[1] = 'r';
+  else
+    buf[1] = '-';
+  if (mode & MODE_WUSR)
+    buf[2] = 'w';
+  else
+    buf[2] = '-';
+  if (mode & MODE_XUSR)
+    buf[3] = 'x';
+  else
+    buf[3] = '-';
+  if (mode & MODE_ROTH)
+    buf[4] = 'r';
+  else
+    buf[4] = '-';
+  if (mode & MODE_WOTH)
+    buf[5] = 'w';
+  else
+    buf[5] = '-';
+  if (mode & MODE_XOTH)
+    buf[6] = 'x';
+  else
+    buf[6] = '-';
+  buf[7] = 0;
+  return buf;
+}
+
 void
 ls(char *path)
 {
@@ -43,7 +92,7 @@ ls(char *path)
 
   switch(st.type){
   case T_FILE:
-    printf(1, "%s %d %d %d\n", fmtname(path), st.type, st.ino, st.size);
+    printf(1, "%s %s %s %d %d %d\n", fmtmode(st.type, st.mode), fmtowner(st.owner), fmtname(path), st.type, st.ino, st.size);
     break;
 
   case T_DIR:
@@ -63,7 +112,7 @@ ls(char *path)
         printf(1, "ls: cannot stat %s\n", buf);
         continue;
       }
-      printf(1, "%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
+      printf(1, "%s %s %s %d %d %d\n", fmtmode(st.type, st.mode), fmtowner(st.owner), fmtname(buf), st.type, st.ino, st.size);
     }
     break;
   }

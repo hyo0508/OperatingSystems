@@ -343,6 +343,7 @@ sys_mkdir(void)
     end_op();
     return -1;
   }
+  ip->mode = MODE_RUSR | MODE_WUSR | MODE_XUSR | MODE_ROTH | MODE_XOTH;
   iunlockput(ip);
   end_op();
   return 0;
