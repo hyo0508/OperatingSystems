@@ -145,6 +145,7 @@ int
 main(void)
 {
   static char buf[100];
+  static char logoutbuf[7];
   int fd;
 
   // Ensure that three file descriptors are open.
@@ -164,6 +165,11 @@ main(void)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
     }
+    strcpy(logoutbuf, buf);
+    if (logoutbuf[6] == '\n')
+      logoutbuf[6] = 0;
+    if (!strcmp(logoutbuf, "logout"))
+      exit();
     if(fork1() == 0)
       runcmd(parsecmd(buf));
     wait();

@@ -23,6 +23,11 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int uinit(void);
+int success(const char*, const char*);
+int setusername(const char*);
+int addUser(char*, char*);
+int deleteUser(char*);
 
 // ulib.c
 int stat(const char*, struct stat*);

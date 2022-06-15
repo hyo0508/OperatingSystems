@@ -111,6 +111,7 @@ found:
   p->context = (struct context*)sp;
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
+  memset(p->username, 0, sizeof *p->username);
 
   return p;
 }
@@ -199,6 +200,7 @@ fork(void)
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
+  strncpy(np->username, curproc->username, strlen(curproc->username));
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -494,6 +496,12 @@ kill(int pid)
   }
   release(&ptable.lock);
   return -1;
+}
+
+void
+setusername(const char *username)
+{
+  strncpy(myproc()->username, username, strlen(username));
 }
 
 //PAGEBREAK: 36

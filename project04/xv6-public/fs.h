@@ -5,6 +5,13 @@
 #define ROOTINO 1  // root i-number
 #define BSIZE 512  // block size
 
+#define MODE_RUSR 32
+#define MODE_WUSR 16
+#define MODE_XUSR 8
+#define MODE_ROTH 4
+#define MODE_WOTH 2
+#define MODE_XOTH 1
+
 // Disk layout:
 // [ boot block | super block | log | inode blocks |
 //                                          free bit map | data blocks]
@@ -21,7 +28,7 @@ struct superblock {
   uint bmapstart;    // Block number of first free map block
 };
 
-#define NDIRECT 12
+#define NDIRECT 7
 #define NINDIRECT (BSIZE / sizeof(uint))
 #define MAXFILE (NDIRECT + NINDIRECT)
 
@@ -32,6 +39,8 @@ struct dinode {
   short minor;          // Minor device number (T_DEV only)
   short nlink;          // Number of links to inode in file system
   uint size;            // Size of file (bytes)
+  char owner[16];
+  int  mode;
   uint addrs[NDIRECT+1];   // Data block addresses
 };
 

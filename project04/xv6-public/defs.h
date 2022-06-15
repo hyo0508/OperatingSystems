@@ -53,6 +53,8 @@ int             readi(struct inode*, char*, uint, uint);
 void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, char*, uint, uint);
 
+// void            uinit(void);
+
 // ide.c
 void            ideinit(void);
 void            ideintr(void);
@@ -120,6 +122,7 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+void            setusername(const char*);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

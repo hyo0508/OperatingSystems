@@ -27,6 +27,14 @@ static void itrunc(struct inode*);
 // only one device
 struct superblock sb; 
 
+struct {
+  int uid;
+  int numusers;
+  int valid[10];
+  char username[10][15];
+  char password[10][15];
+} utable;
+
 // Read the super block.
 void
 readsb(int dev, struct superblock *sb)
@@ -204,6 +212,8 @@ ialloc(uint dev, short type)
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
       dip->type = type;
+      strncpy(dip->owner, myproc()->username, strlen(myproc()->username));
+      dip->owner[strlen(myproc()->username)] = 0;
       log_write(bp);   // mark it allocated on the disk
       brelse(bp);
       return iget(dev, inum);
@@ -230,6 +240,9 @@ iupdate(struct inode *ip)
   dip->minor = ip->minor;
   dip->nlink = ip->nlink;
   dip->size = ip->size;
+  strncpy(dip->owner, ip->owner, strlen(ip->owner));
+  dip->owner[strlen(ip->owner)] = 0;
+  dip->mode = ip->mode;
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
   log_write(bp);
   brelse(bp);
@@ -303,6 +316,9 @@ ilock(struct inode *ip)
     ip->minor = dip->minor;
     ip->nlink = dip->nlink;
     ip->size = dip->size;
+    strncpy(ip->owner, dip->owner, strlen(dip->owner));
+    ip->owner[strlen(dip->owner)] = 0;
+    ip->mode = dip->mode;
     memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
     brelse(bp);
     ip->valid = 1;
@@ -444,6 +460,9 @@ stati(struct inode *ip, struct stat *st)
   st->type = ip->type;
   st->nlink = ip->nlink;
   st->size = ip->size;
+  strncpy(st->owner, ip->owner, strlen(ip->owner));
+  st->owner[strlen(ip->owner)] = 0;
+  st->mode = ip->mode;
 }
 
 //PAGEBREAK!
@@ -667,4 +686,256 @@ struct inode*
 nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
+}
+
+void
+uinit()
+{
+  struct inode *userinfo;
+  struct inode *dp;
+  int offset;
+  char numusers;
+  char valid[10];
+  uint poff;
+  int i;
+
+  iinit(1);
+
+  begin_op();
+  dp = iget(ROOTDEV, ROOTINO);
+  if ((userinfo = dirlookup(dp, "users", &poff)) == 0) {
+    userinfo = ialloc(1, T_FILE);
+    strncpy(userinfo->owner, "root", strlen("root"));
+    userinfo->mode = MODE_RUSR | MODE_WUSR | MODE_ROTH;
+    userinfo->type = T_FILE;
+    dirlink(dp, "users", userinfo->inum);
+    utable.numusers = 1;
+    for (i = 1; i < 10; i++)
+      utable.valid[i] = 0;
+    utable.valid[0] = 1;
+    strncpy(utable.username[0], "root", strlen("root"));
+    strncpy(utable.password[0], "0000", strlen("0000"));
+
+    offset = 0;
+    numusers = utable.numusers == 10 ? 'A' : utable.numusers + '0';
+    for (i = 0; i < 10; i++)
+      valid[i] = utable.valid[i] + '0';
+    writei(userinfo, &numusers, offset, sizeof(numusers));
+    offset += sizeof(numusers);
+    writei(userinfo, valid, offset, sizeof(valid));
+    offset += sizeof(valid);
+    for (i = 0; i < 10; i++) {
+      writei(userinfo, utable.username[i], offset, sizeof(utable.username[i]));
+      offset += sizeof(utable.username[i]);
+    }
+    for (i = 0; i < 10; i++) {
+      writei(userinfo, utable.password[i], offset, sizeof(utable.password[i]));
+      offset += sizeof(utable.password[i]);
+    }
+
+    iupdate(userinfo);
+    iupdate(dp);
+  } else {
+    ilock(userinfo);
+    offset = 0;
+    readi(userinfo, &numusers, offset, sizeof(numusers));
+    offset += sizeof(numusers);
+    readi(userinfo, valid, offset, sizeof(valid));
+    offset += sizeof(valid);
+    for (i = 0; i < 10; i++) {
+      readi(userinfo, utable.username[i], offset, sizeof(utable.username[i]));
+      offset += sizeof(utable.username[i]);
+    }
+    for (i = 0; i < 10; i++) {
+      readi(userinfo, utable.password[i], offset, sizeof(utable.password[i]));
+      offset += sizeof(utable.password[i]);
+    }
+    utable.numusers = (numusers == 'A') ? 10 : numusers - '0';
+    for (i = 0; i < 10; i++)
+      utable.valid[i] = valid[i] - '0';
+    iunlock(userinfo);
+  }
+  end_op();
+}
+
+int
+sys_uinit(void)
+{
+  uinit();
+  return 0;
+}
+
+int success(const char *username, const char *password)
+{
+  int i;
+
+  for (i = 0; i < 10; i++) {
+    if (utable.valid[i] == 0)
+      continue;
+    if (strncmp(username, utable.username[i], strlen(username)))
+      continue;
+    if (strncmp(password, utable.password[i], strlen(password)))
+      continue;
+    return 1;
+  }
+  return 0;
+}
+
+int
+sys_success(void)
+{
+  char *username;
+  char *password;
+  if (argstr(0, &username) < 0)
+    return -1;
+  if (argstr(1, &password) < 0)
+    return -1;
+  return success(username, password);
+}
+
+int addUser(char *username, char *password) {
+  struct inode *userinfo;
+  struct inode *dp;
+  uint poff;
+  int offset;
+  char numusers;
+  char valid[10];
+  int i;
+  
+  if (strncmp(myproc()->username, "root", strlen("root")))
+    return -1;
+  if (utable.numusers == 10)
+    return -1;
+  for (i = 0; i < 10; i++) {
+    if (utable.valid[i] && !strncmp(utable.username[i], username, strlen(username)))
+      return -1;
+  }
+
+  for (i = 0; i < 10; i++) {
+    if (utable.valid[i])
+      continue;
+    strncpy(utable.username[i], username, strlen(username));
+    strncpy(utable.password[i], password, strlen(password));
+    utable.valid[i] = 1;
+    utable.numusers++;
+
+    begin_op();
+    dp = iget(ROOTDEV, ROOTINO);
+    ilock(dp);
+    userinfo = dirlookup(dp, "users", &poff);
+    ilock(userinfo);
+
+    if (dirlookup(dp, username, 0) == 0) {
+      struct inode *newdir = ialloc(1, T_DIR);
+      ilock(newdir);
+      newdir->mode = MODE_RUSR | MODE_WUSR | MODE_XUSR | MODE_ROTH | MODE_XOTH;
+      newdir->type = T_DIR;
+      strncpy(newdir->owner, username, strlen(username));
+      newdir->owner[strlen(username)] = 0;
+      dirlink(dp, username, newdir->inum);
+
+      dirlink(newdir, ".", newdir->inum);
+      dirlink(newdir, "..", dp->inum);
+
+      iupdate(newdir);
+      iupdate(dp);
+      iunlock(newdir);
+      iunlock(dp);
+    } else {
+      iupdate(dp);
+      iunlock(dp);
+    }
+
+    offset = 0;
+    numusers = utable.numusers == 10 ? 'A' : utable.numusers + '0';
+    for (i = 0; i < 10; i++)
+      valid[i] = utable.valid[i] + '0';
+    writei(userinfo, &numusers, offset, sizeof(numusers));
+    offset += sizeof(numusers);
+    writei(userinfo, valid, offset, sizeof(valid));
+    offset += sizeof(valid);
+    for (i = 0; i < 10; i++) {
+      writei(userinfo, utable.username[i], offset, sizeof(utable.username[i]));
+      offset += sizeof(utable.username[i]);
+    }
+    for (i = 0; i < 10; i++) {
+      writei(userinfo, utable.password[i], offset, sizeof(utable.password[i]));
+      offset += sizeof(utable.password[i]);
+    }
+    iupdate(userinfo);
+    iunlock(userinfo);
+    end_op();
+    return 0;
+  }
+  return -1;
+}
+
+int
+sys_addUser(void) {
+  char *username;
+  char *password;
+  if (argstr(0, &username) < 0)
+    return -1;
+  if (argstr(1, &password) < 0)
+    return -1;
+  return addUser(username, password);
+}
+
+int deleteUser(char *username) {
+  struct inode *userinfo;
+  struct inode *dp;
+  uint poff;
+  int offset;
+  char numusers;
+  char valid[10];
+  int i;
+  
+  if (strncmp(myproc()->username, "root", strlen("root")))
+    return -1;
+  if (!strncmp("root", username, strlen(username)))
+    return -1;
+  
+  for (i = 0; i < 10; i++) {
+    if (!utable.valid[i] || strncmp(utable.username[i], username, strlen(username)))
+      continue;
+    utable.valid[i] = 0;
+    utable.numusers--;
+
+    begin_op();
+    dp = iget(ROOTDEV, ROOTINO);
+    ilock(dp);
+    userinfo = dirlookup(dp, "users", &poff);
+    iunlock(dp);
+    ilock(userinfo);
+
+    offset = 0;
+    numusers = utable.numusers == 10 ? 'A' : utable.numusers + '0';
+    for (i = 0; i < 10; i++)
+      valid[i] = utable.valid[i] + '0';
+    writei(userinfo, &numusers, offset, sizeof(numusers));
+    offset += sizeof(numusers);
+    writei(userinfo, valid, offset, sizeof(valid));
+    offset += sizeof(valid);
+    for (i = 0; i < 10; i++) {
+      writei(userinfo, utable.username[i], offset, sizeof(utable.username[i]));
+      offset += sizeof(utable.username[i]);
+    }
+    for (i = 0; i < 10; i++) {
+      writei(userinfo, utable.password[i], offset, sizeof(utable.password[i]));
+      offset += sizeof(utable.password[i]);
+    }
+    iupdate(userinfo);
+    iunlock(userinfo);
+    end_op();
+    return 0;
+  }
+  return -1;
+}
+
+int
+sys_deleteUser(void) {
+  char *username;
+  if (argstr(0, &username) < 0)
+    return -1;
+  return deleteUser(username);
 }
